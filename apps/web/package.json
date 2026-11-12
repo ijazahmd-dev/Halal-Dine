@@ -1,0 +1,35 @@
+{
+  "name": "@halal-dine/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint",
+    "check-types": "tsc --noEmit",
+    "clean": "rm -rf .next"
+  },
+  "dependencies": {
+    "@halal-dine/api-client": "workspace:*",
+    "@halal-dine/contracts": "workspace:*",
+    "@halal-dine/utils": "workspace:*",
+    "@halal-dine/validation": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "15.5.29",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "^3.0.1"
+  },
+  "devDependencies": {
+    "@halal-dine/config": "workspace:*",
+    "@types/node": "^22.13.5",
+    "@types/react": "~19.3.0",
+    "@types/react-dom": "~19.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^3.4.19",
+    "typescript": "5.9.3"
+  }
+}

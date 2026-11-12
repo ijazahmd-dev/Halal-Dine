@@ -1,0 +1,24 @@
+{
+  "name": "halal-dine",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "docker:up": "docker compose --env-file .env -f infrastructure/docker/docker-compose.yml up -d",
+    "docker:down": "docker compose --env-file .env -f infrastructure/docker/docker-compose.yml down",
+    "db:migrate": "pnpm --filter @halal-dine/api run db:migrate",
+    "db:generate": "pnpm --filter @halal-dine/api run db:generate",
+    "db:studio": "pnpm --filter @halal-dine/api run db:studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.2",
+    "turbo": "^2.11.10",
+    "typescript": "5.9.3"
+  }
+}

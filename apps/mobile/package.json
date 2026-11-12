@@ -1,0 +1,43 @@
+{
+  "name": "@halal-dine/mobile",
+  "version": "0.1.0",
+  "main": "expo-router/entry",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "check-types": "tsc --noEmit",
+    "clean": "rm -rf .expo"
+  },
+  "dependencies": {
+    "@halal-dine/api-client": "workspace:*",
+    "@halal-dine/contracts": "workspace:*",
+    "@halal-dine/utils": "workspace:*",
+    "@halal-dine/validation": "workspace:*",
+    "expo": "~58.0.23",
+    "expo-constants": "~58.0.15",
+    "expo-linking": "~58.0.16",
+    "expo-router": "~58.0.30",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-screens": "~4.30.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@halal-dine/config": "workspace:*",
+    "@types/react": "~19.3.0",
+    "typescript": "5.9.3"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
+  }
+}

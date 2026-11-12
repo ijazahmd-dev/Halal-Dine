@@ -1,0 +1,19 @@
+{
+  "name": "@halal-dine/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "check-types": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@halal-dine/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@halal-dine/config": "workspace:*",
+    "typescript": "5.9.3"
+  }
+}

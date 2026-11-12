@@ -1,0 +1,52 @@
+{
+  "name": "@halal-dine/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main",
+    "check-types": "tsc --noEmit",
+    "test:unit": "tsc test/auth-unit.spec.ts --outDir dist-test --target es2022 --module commonjs --moduleResolution node --experimentalDecorators --emitDecoratorMetadata --esModuleInterop && node dist-test/test/auth-unit.spec.js && rm -rf dist-test",
+    "test:registration": "tsc test/auth-registration.spec.ts --outDir dist-test --target es2022 --module commonjs --moduleResolution node --experimentalDecorators --emitDecoratorMetadata --esModuleInterop && node dist-test/test/auth-registration.spec.js && rm -rf dist-test",
+    "test:email-verification": "tsc test/auth-email-verification.spec.ts --outDir dist-test --target es2022 --module commonjs --moduleResolution node --experimentalDecorators --emitDecoratorMetadata --esModuleInterop && node dist-test/test/auth-email-verification.spec.js && rm -rf dist-test",
+    "test:auth": "pnpm run test:unit && pnpm run test:registration && pnpm run test:email-verification",
+    "test": "pnpm run test:auth",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@halal-dine/contracts": "workspace:*",
+    "@halal-dine/utils": "workspace:*",
+    "@halal-dine/validation": "workspace:*",
+    "@nestjs/common": "^12.4.2",
+    "@nestjs/config": "^12.1.1",
+    "@nestjs/core": "^12.4.2",
+    "@nestjs/platform-express": "^12.4.2",
+    "@nestjs/swagger": "^12.1.1",
+    "@nestjs/throttler": "^6.7.1",
+    "@prisma/client": "6.19.3",
+    "argon2": "^0.45.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "helmet": "^8.3.0",
+    "nodemailer": "^10.5.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@halal-dine/config": "workspace:*",
+    "@nestjs/cli": "^12.0.12",
+    "@nestjs/schematics": "^12.0.13",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "@types/nodemailer": "^8.0.2",
+    "prisma": "6.19.3",
+    "source-map-support": "^0.5.21",
+    "typescript": "5.9.3"
+  }
+}

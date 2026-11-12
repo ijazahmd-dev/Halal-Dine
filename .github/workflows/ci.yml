@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  verify:
+    name: Lint, Typecheck, Build & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: halal_dine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d halal_dine_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @halal-dine/api run db:generate
+
+      - name: Typecheck all workspaces
+        run: pnpm run check-types
+
+      - name: Format Check
+        run: pnpm run format:check
+
+      - name: Build packages and applications
+        run: pnpm run build
+
+      - name: Run API Unit & Auth Integration Tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/halal_dine_test?schema=public
+          TEST_DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/halal_dine_test?schema=public
+          CORS_ORIGIN: http://localhost:3000
+          EMAIL_PROVIDER: console
+        run: pnpm --filter @halal-dine/api run test
