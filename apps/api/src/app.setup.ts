@@ -1,5 +1,6 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { parseCorsOrigins, resolveExpressTrustProxy } from './common/config/env.validation';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -26,6 +27,8 @@ export function configureApp(
   const trustProxy = resolveExpressTrustProxy(rawTrustProxy);
   app.set('trust proxy', trustProxy);
 
+  app.use(cookieParser());
+
   // HTTP security headers (keep Swagger UI working outside production)
   app.use(
     helmet({
@@ -49,4 +52,3 @@ export function configureApp(
 
   return { port, apiPrefix };
 }
-

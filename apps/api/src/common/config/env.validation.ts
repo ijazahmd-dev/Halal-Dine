@@ -113,7 +113,7 @@ export const envSchema = z
         ),
     ),
 
-    // Mail & Email Verification
+    // Mail & Email Verification / Password Reset
     EMAIL_PROVIDER: z
       .enum(['smtp', 'console', 'disabled'], {
         message: 'Must be smtp, console, or disabled',
@@ -122,6 +122,8 @@ export const envSchema = z
     EMAIL_FROM: optionalNonEmpty,
     EMAIL_VERIFICATION_URL_BASE: optionalNonEmpty,
     EMAIL_VERIFICATION_EXPIRY_HOURS: optionalPositiveInt(24, 168),
+    PASSWORD_RESET_URL_BASE: optionalNonEmpty,
+    PASSWORD_RESET_TOKEN_EXPIRY_MINUTES: optionalPositiveInt(30, 1440),
 
     SMTP_HOST: optionalNonEmpty,
     SMTP_PORT: optionalPositiveInt(587, 65535),
@@ -138,16 +140,25 @@ export const envSchema = z
     THROTTLE_LIMIT: optionalPositiveInt(60),
     AUTH_REGISTER_THROTTLE_LIMIT: optionalPositiveInt(5),
     AUTH_REGISTER_THROTTLE_TTL_MS: optionalPositiveInt(60000),
+    AUTH_LOGIN_THROTTLE_LIMIT: optionalPositiveInt(5),
+    AUTH_LOGIN_THROTTLE_TTL_MS: optionalPositiveInt(60000),
+    AUTH_REFRESH_THROTTLE_LIMIT: optionalPositiveInt(20),
+    AUTH_REFRESH_THROTTLE_TTL_MS: optionalPositiveInt(60000),
     AUTH_VERIFY_EMAIL_THROTTLE_LIMIT: optionalPositiveInt(10),
     AUTH_VERIFY_EMAIL_THROTTLE_TTL_MS: optionalPositiveInt(60000),
     RESEND_VERIFICATION_THROTTLE_LIMIT: optionalPositiveInt(3),
     RESEND_VERIFICATION_THROTTLE_TTL_MS: optionalPositiveInt(60000),
+    AUTH_FORGOT_PASSWORD_THROTTLE_LIMIT: optionalPositiveInt(3),
+    AUTH_FORGOT_PASSWORD_THROTTLE_TTL_MS: optionalPositiveInt(60000),
+    AUTH_FORGOT_PASSWORD_EMAIL_LIMIT: optionalPositiveInt(3, 50),
+    AUTH_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES: optionalPositiveInt(15, 1440),
+    AUTH_RESET_PASSWORD_THROTTLE_LIMIT: optionalPositiveInt(5),
+    AUTH_RESET_PASSWORD_THROTTLE_TTL_MS: optionalPositiveInt(60000),
+    AUTH_CHANGE_PASSWORD_THROTTLE_LIMIT: optionalPositiveInt(5),
+    AUTH_CHANGE_PASSWORD_THROTTLE_TTL_MS: optionalPositiveInt(60000),
 
-    // Prepared JWT Configuration (Task 4)
-    JWT_SECRET: z.preprocess(
-      (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-      z.string().min(32, 'Must be at least 32 characters').optional(),
-    ),
+    // JWT Access Token Configuration (required; no hardcoded secrets)
+    JWT_SECRET: z.string({ required_error: 'Required' }).min(32, 'Must be at least 32 characters'),
     JWT_ACCESS_TOKEN_EXPIRY: z.preprocess(
       (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
       z
@@ -158,6 +169,46 @@ export const envSchema = z
     ),
     JWT_ISSUER: optionalNonEmpty,
     JWT_AUDIENCE: optionalNonEmpty,
+
+    // Refresh Token & Web Cookie Configuration
+    REFRESH_TOKEN_EXPIRY_DAYS: optionalPositiveInt(7, 90),
+    REFRESH_COOKIE_NAME: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? 'halal_dine_refresh_token' : val),
+      z.string().trim().min(1).default('halal_dine_refresh_token'),
+    ),
+    REFRESH_COOKIE_PATH: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? '/api/auth' : val),
+      z
+        .string()
+        .trim()
+        .refine((val) => val.startsWith('/'), 'Must start with "/"')
+        .default('/api/auth'),
+    ),
+    REFRESH_COOKIE_DOMAIN: optionalNonEmpty,
+    REFRESH_COOKIE_SAME_SITE: z
+      .enum(['lax', 'strict', 'none'], {
+        message: 'Must be lax, strict, or none',
+      })
+      .default('lax'),
+    REFRESH_CSRF_COOKIE_NAME: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? 'halal_dine_csrf_token' : val),
+      z.string().trim().min(1).default('halal_dine_csrf_token'),
+    ),
+
+    // Token History & Session Cleanup Retention
+    ROTATED_TOKEN_RETENTION_DAYS: optionalPositiveInt(30, 365),
+    SESSION_CLEANUP_RETENTION_DAYS: optionalPositiveInt(30, 365),
+    EMAIL_TOKEN_CLEANUP_RETENTION_DAYS: optionalPositiveInt(7, 90),
+    PASSWORD_RESET_CLEANUP_RETENTION_DAYS: optionalPositiveInt(7, 90),
+    SESSION_CLEANUP_BATCH_SIZE: optionalPositiveInt(500, 5000),
+    SESSION_CLEANUP_CRON: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? '0 */6 * * *' : val),
+      z
+        .string()
+        .trim()
+        .regex(/^(\S+\s+){4,5}\S+$/, 'Must be a valid 5-field or 6-field cron expression')
+        .default('0 */6 * * *'),
+    ),
   })
   .superRefine((env, ctx) => {
     const isProd = env.NODE_ENV === 'production';
@@ -210,6 +261,13 @@ export const envSchema = z
           message: 'Required when EMAIL_PROVIDER is smtp',
         });
       }
+      if (!env.PASSWORD_RESET_URL_BASE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PASSWORD_RESET_URL_BASE'],
+          message: 'Required when EMAIL_PROVIDER is smtp',
+        });
+      }
       if ((env.SMTP_USER && !env.SMTP_PASS) || (!env.SMTP_USER && env.SMTP_PASS)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -230,6 +288,14 @@ export const envSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_VERIFICATION_URL_BASE'],
+        message: 'Must be a valid HTTP or HTTPS URL',
+      });
+    }
+
+    if (env.PASSWORD_RESET_URL_BASE && !isValidHttpUrl(env.PASSWORD_RESET_URL_BASE)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PASSWORD_RESET_URL_BASE'],
         message: 'Must be a valid HTTP or HTTPS URL',
       });
     }
@@ -277,6 +343,8 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
     EMAIL_FROM: result.data.EMAIL_FROM ?? 'Halal Dine <noreply@halaldine.in>',
     EMAIL_VERIFICATION_URL_BASE:
       result.data.EMAIL_VERIFICATION_URL_BASE ?? 'http://localhost:3000/verify-email',
+    PASSWORD_RESET_URL_BASE:
+      result.data.PASSWORD_RESET_URL_BASE ?? 'http://localhost:3000/reset-password',
     JWT_ACCESS_TOKEN_EXPIRY: result.data.JWT_ACCESS_TOKEN_EXPIRY ?? '15m',
     JWT_ISSUER: result.data.JWT_ISSUER ?? 'halal-dine-api',
     JWT_AUDIENCE: result.data.JWT_AUDIENCE ?? 'halal-dine-clients',

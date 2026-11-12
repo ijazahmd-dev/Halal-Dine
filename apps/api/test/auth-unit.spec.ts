@@ -5,8 +5,15 @@ import {
   resolveExpressTrustProxy,
   validateEnv,
 } from '../src/common/config/env.validation';
+import { parseDurationToSeconds } from '../src/common/utils/env.util';
+import { PrismaService } from '../src/database/prisma.service';
 import { PasswordService } from '../src/modules/auth/services/password.service';
+import { SessionService } from '../src/modules/auth/services/session.service';
 import { TokenCryptoService } from '../src/modules/auth/services/token-crypto.service';
+import {
+  renderPasswordChangedEmailTemplate,
+  renderPasswordResetEmailTemplate,
+} from '../src/modules/mail/email-templates';
 import { EmailDeliveryError, MailService } from '../src/modules/mail/mail.service';
 
 interface TestResult {
@@ -213,16 +220,33 @@ async function runUnitTests() {
 
   // 4. Environment Validation tests
   console.log('\n4. Testing Startup Environment Validation (env.validation.ts)...');
+  const validDevJwtSecret = 'dev_test_jwt_secret_at_least_32_characters_long';
   const validDev = validateEnv({
     DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine?schema=public',
+    JWT_SECRET: validDevJwtSecret,
   });
   assert(
     validDev.NODE_ENV === 'development' &&
       validDev.PORT === 3001 &&
       validDev.CORS_ORIGIN === 'http://localhost:3000' &&
-      validDev.TRUST_PROXY === 'false',
+      validDev.TRUST_PROXY === 'false' &&
+      validDev.REFRESH_TOKEN_EXPIRY_DAYS === 7 &&
+      validDev.REFRESH_COOKIE_NAME === 'halal_dine_refresh_token' &&
+      validDev.REFRESH_COOKIE_PATH === '/api/auth' &&
+      validDev.REFRESH_COOKIE_SAME_SITE === 'lax',
     'Applies secure development defaults cleanly',
   );
+
+  let missingJwtDevFailed = false;
+  try {
+    validateEnv({
+      NODE_ENV: 'development',
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine?schema=public',
+    });
+  } catch {
+    missingJwtDevFailed = true;
+  }
+  assert(missingJwtDevFailed === true, 'Rejects missing JWT_SECRET even in development');
 
   // Reject wildcard CORS
   let rejectedWildcard = false;
@@ -230,6 +254,7 @@ async function runUnitTests() {
     validateEnv({
       NODE_ENV: 'development',
       DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine',
+      JWT_SECRET: validDevJwtSecret,
       CORS_ORIGIN: '*',
     });
   } catch {
@@ -243,6 +268,7 @@ async function runUnitTests() {
     validateEnv({
       NODE_ENV: 'development',
       DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine',
+      JWT_SECRET: validDevJwtSecret,
       TRUST_PROXY: 'true',
     });
   } catch {
@@ -304,6 +330,7 @@ async function runUnitTests() {
     SMTP_PASS: 're_secret_key',
     EMAIL_FROM: 'Halal Dine <noreply@halaldine.in>',
     EMAIL_VERIFICATION_URL_BASE: 'https://halaldine.in/verify-email',
+    PASSWORD_RESET_URL_BASE: 'https://halaldine.in/reset-password',
     JWT_SECRET: 'a_very_long_production_jwt_secret_key_at_least_32_bytes',
     JWT_ACCESS_TOKEN_EXPIRY: '15m',
     JWT_ISSUER: 'halal-dine-api',
@@ -312,6 +339,166 @@ async function runUnitTests() {
   assert(
     validProd.NODE_ENV === 'production' && validProd.SMTP_PORT === 465,
     'Accepts valid full production configuration',
+  );
+
+  // 5. Login Helpers, Duration Parsing, Dummy Argon2id Verification & Cookie Config
+  console.log('\n5. Testing Duration Parsing, Dummy Hash Verification & Cookie Configuration...');
+  assert(
+    parseDurationToSeconds('15m', 300) === 900 &&
+      parseDurationToSeconds('30s', 300) === 30 &&
+      parseDurationToSeconds('2h', 300) === 7200 &&
+      parseDurationToSeconds('7d', 300) === 604800 &&
+      parseDurationToSeconds('invalid', 300) === 300,
+    'parseDurationToSeconds converts s/m/h/d strings accurately and falls back safely',
+  );
+
+  let dummyCompleted = false;
+  await passwordService.verifyAgainstDummy('AnyLoginAttempt123!');
+  dummyCompleted = true;
+  assert(dummyCompleted === true, 'PasswordService.verifyAgainstDummy completes without throwing');
+
+  const devSessionService = new SessionService(
+    null as unknown as PrismaService,
+    new ConfigService({
+      NODE_ENV: 'development',
+      REFRESH_COOKIE_NAME: 'halal_dine_refresh_token',
+      REFRESH_COOKIE_PATH: '/api/auth',
+      REFRESH_COOKIE_SAME_SITE: 'lax',
+    }),
+    new TokenCryptoService(),
+  );
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const devCookie = devSessionService.getRefreshCookieConfig(expiresAt);
+  assert(
+    devCookie.name === 'halal_dine_refresh_token' &&
+      devCookie.options.httpOnly === true &&
+      devCookie.options.secure === false &&
+      devCookie.options.sameSite === 'lax' &&
+      devCookie.options.path === '/api/auth',
+    'SessionService cookie config uses HttpOnly + Lax + Secure=false in development',
+  );
+
+  const prodSessionService = new SessionService(
+    null as unknown as PrismaService,
+    new ConfigService({
+      NODE_ENV: 'production',
+      REFRESH_COOKIE_NAME: 'halal_dine_refresh_token',
+      REFRESH_COOKIE_PATH: '/api/auth',
+      REFRESH_COOKIE_SAME_SITE: 'lax',
+      REFRESH_COOKIE_DOMAIN: '.halaldine.in',
+    }),
+    new TokenCryptoService(),
+  );
+  const prodCookie = prodSessionService.getRefreshCookieConfig(expiresAt);
+  assert(
+    prodCookie.options.httpOnly === true &&
+      prodCookie.options.secure === true &&
+      prodCookie.options.sameSite === 'lax' &&
+      prodCookie.options.domain === '.halaldine.in',
+    'SessionService cookie config enforces Secure=true in production and honors domain',
+  );
+
+  // 6. Task 5 Unit Checks: Constant-Time Comparison, CSRF Cookie Config, Retention Env Defaults
+  console.log(
+    '\n6. Testing Constant-Time Comparison, CSRF Cookie Config & Cleanup Env Defaults...',
+  );
+  const unitTokenCrypto = new TokenCryptoService();
+  assert(
+    unitTokenCrypto.constantTimeEquals('abcdef123456', 'abcdef123456') === true &&
+      unitTokenCrypto.constantTimeEquals('abcdef123456', 'abcdef123457') === false &&
+      unitTokenCrypto.constantTimeEquals('short', 'longer') === false &&
+      unitTokenCrypto.constantTimeEquals('', '') === false,
+    'TokenCryptoService.constantTimeEquals compares equal/mismatched tokens safely',
+  );
+
+  const csrfCookie = devSessionService.getCsrfCookieConfig(expiresAt);
+  const csrfClear = devSessionService.getCsrfClearCookieConfig();
+  assert(
+    csrfCookie.name === 'halal_dine_csrf_token' &&
+      csrfCookie.options.httpOnly === false &&
+      csrfCookie.options.path === '/' &&
+      csrfCookie.options.sameSite === 'lax' &&
+      csrfClear.options.path === '/',
+    'SessionService builds matching double-submit CSRF cookie & clear descriptors',
+  );
+
+  assert(
+    validDev.ROTATED_TOKEN_RETENTION_DAYS === 30 &&
+      validDev.SESSION_CLEANUP_RETENTION_DAYS === 30 &&
+      validDev.EMAIL_TOKEN_CLEANUP_RETENTION_DAYS === 7 &&
+      validDev.SESSION_CLEANUP_BATCH_SIZE === 500 &&
+      validDev.SESSION_CLEANUP_CRON === '0 */6 * * *',
+    'Applies rotation retention and cleanup schedule defaults cleanly',
+  );
+
+  let badCronRejected = false;
+  try {
+    validateEnv({
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine',
+      JWT_SECRET: validDevJwtSecret,
+      SESSION_CLEANUP_CRON: 'not-a-cron',
+    });
+  } catch {
+    badCronRejected = true;
+  }
+  assert(badCronRejected === true, 'Rejects invalid SESSION_CLEANUP_CRON expression');
+
+  // 7. Task 6 Unit Checks: Password Reset Config, Email Templates & Console Log Hygiene
+  console.log('\n7. Testing Password Reset Config, Templates & Console Log Safety...');
+  assert(
+    validDev.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES === 30 &&
+      validDev.PASSWORD_RESET_URL_BASE === 'http://localhost:3000/reset-password' &&
+      validDev.PASSWORD_RESET_CLEANUP_RETENTION_DAYS === 7 &&
+      validDev.AUTH_FORGOT_PASSWORD_THROTTLE_LIMIT === 3 &&
+      validDev.AUTH_RESET_PASSWORD_THROTTLE_LIMIT === 5 &&
+      validDev.AUTH_CHANGE_PASSWORD_THROTTLE_LIMIT === 5 &&
+      validDev.AUTH_CHANGE_PASSWORD_THROTTLE_TTL_MS === 60000,
+    'Applies password reset and change-password expiry, URL base, throttle, and retention defaults cleanly',
+  );
+
+  let badResetUrlFailed = false;
+  try {
+    validateEnv({
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/halal_dine',
+      JWT_SECRET: validDevJwtSecret,
+      PASSWORD_RESET_URL_BASE: 'ftp://invalid-scheme.local/reset',
+    });
+  } catch {
+    badResetUrlFailed = true;
+  }
+  assert(badResetUrlFailed === true, 'Rejects invalid PASSWORD_RESET_URL_BASE scheme');
+
+  const resetTemplate = renderPasswordResetEmailTemplate({
+    name: '<script>alert(1)</script>User',
+    resetUrl: 'https://halaldine.in/reset-password?token=RAW_TOKEN_VALUE',
+    expiryMinutes: 30,
+  });
+  const changedTemplate = renderPasswordChangedEmailTemplate({
+    name: '<User>',
+  });
+  assert(
+    resetTemplate.subject.toLowerCase().includes('reset') &&
+      resetTemplate.text.includes('30 minutes') &&
+      resetTemplate.text.includes('https://halaldine.in/reset-password?token=RAW_TOKEN_VALUE') &&
+      !resetTemplate.html.includes('<script>') &&
+      resetTemplate.html.includes('&lt;script&gt;') &&
+      changedTemplate.html.includes('&lt;User&gt;'),
+    'Password reset & changed templates escape HTML, include expiry, and format links safely',
+  );
+
+  const consoleResetMail = new MailService(new ConfigService({ EMAIL_PROVIDER: 'console' }));
+  let resetConsoleCompleted = false;
+  await consoleResetMail.sendPasswordResetEmail({
+    userId: 'user-reset-1',
+    to: 'user@example.com',
+    name: 'Test User',
+    rawToken: 'SECRET_RAW_RESET_TOKEN_UNIT',
+    expiryMinutes: 30,
+  });
+  resetConsoleCompleted = true;
+  assert(
+    resetConsoleCompleted === true,
+    'Console provider prepares password reset email without requiring URL building',
   );
 
   console.log('\n--- Auth Unit Test Verification Summary ---');

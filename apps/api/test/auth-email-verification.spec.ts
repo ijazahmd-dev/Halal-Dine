@@ -42,12 +42,6 @@ async function runTests() {
   const testDbUrl = await ensureIsolatedTestDatabase();
   assert(testDbUrl.includes('_test'), 'Tests isolated to *_test database (protects dev database)');
 
-  const testDbUrl = await ensureIsolatedTestDatabase();
-  assert(
-    testDbUrl.includes('_test'),
-    'Tests isolated to *_test database (protects dev database)',
-  );
-
   const origVerifyLimit = process.env.AUTH_VERIFY_EMAIL_THROTTLE_LIMIT;
   const origResendLimit = process.env.RESEND_VERIFICATION_THROTTLE_LIMIT;
   const origRegLimit = process.env.AUTH_REGISTER_THROTTLE_LIMIT;

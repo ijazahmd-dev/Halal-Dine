@@ -24,5 +24,19 @@ export class TokenCryptoService {
   hashToken(rawToken: string): string {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
   }
-}
 
+  /**
+   * Performs constant-time comparison for opaque strings such as double-submit CSRF tokens.
+   */
+  constantTimeEquals(left: string, right: string): boolean {
+    if (!left || !right || left.length !== right.length) {
+      return false;
+    }
+    const leftBuf = Buffer.from(left, 'utf8');
+    const rightBuf = Buffer.from(right, 'utf8');
+    if (leftBuf.length !== rightBuf.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(leftBuf, rightBuf);
+  }
+}

@@ -88,12 +88,68 @@ export interface RegisterRequestDto {
   phone?: string;
 }
 
+export type AuthClientType = 'web' | 'mobile';
+
+export interface LoginRequestDto {
+  email: string;
+  password: string;
+  deviceInfo?: string;
+}
+
+export interface LoginResponseDto {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+  refreshToken?: string;
+  user: UserResponseDto;
+}
+
+export interface RefreshTokenRequestDto {
+  refreshToken?: string;
+}
+
+export interface RefreshResponseDto {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+  refreshToken?: string;
+}
+
+export interface UserSessionDto {
+  id: string;
+  deviceInfo: string | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+  lastUsedAt: string;
+  expiresAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
+export interface SessionListResponseDto {
+  sessions: UserSessionDto[];
+}
+
 export interface VerifyEmailRequestDto {
   token: string;
 }
 
 export interface ResendVerificationRequestDto {
   email: string;
+}
+
+export interface ForgotPasswordRequestDto {
+  email: string;
+}
+
+export interface ResetPasswordRequestDto {
+  token: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordRequestDto {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface MessageResponseDto {

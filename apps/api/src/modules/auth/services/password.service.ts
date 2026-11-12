@@ -8,6 +8,10 @@ const ARGON2ID_OPTIONS = {
   parallelism: 4, // 4 parallel threads
 } as const;
 
+// Non-secret dummy Argon2id digest matching ARGON2ID_OPTIONS to equalize login timing when a user is not found
+const DUMMY_ARGON2ID_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$wszRPxbbayVEgeePchPLug$2juNMQ4lRcOjql5qxJrpuhr5uHpq//sSssmO8ykmL9w';
+
 @Injectable()
 export class PasswordService {
   private readonly logger = new Logger(PasswordService.name);
@@ -41,5 +45,13 @@ export class PasswordService {
       this.logger.warn(`Password verification rejected due to hash/verify error (${reason})`);
       return false;
     }
+  }
+
+  /**
+   * Executes an Argon2id verification against a dummy digest when no user record exists,
+   * mitigating timing side-channels that could distinguish unknown emails from wrong passwords.
+   */
+  async verifyAgainstDummy(plainPassword: string): Promise<void> {
+    await this.verify(DUMMY_ARGON2ID_HASH, plainPassword);
   }
 }

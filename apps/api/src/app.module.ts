@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './common/config/env.validation';
 import { parsePositiveInt } from './common/utils/env.util';
@@ -14,6 +15,7 @@ import { HealthModule } from './modules/health/health.module';
       envFilePath: ['.env', '../../.env'],
       validate: validateEnv,
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({

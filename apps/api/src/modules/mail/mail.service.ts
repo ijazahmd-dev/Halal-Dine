@@ -2,7 +2,12 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import { renderVerificationEmailTemplate } from './email-templates';
+import {
+  RenderedEmailTemplate,
+  renderPasswordChangedEmailTemplate,
+  renderPasswordResetEmailTemplate,
+  renderVerificationEmailTemplate,
+} from './email-templates';
 
 export type EmailProviderType = 'smtp' | 'console' | 'disabled';
 
@@ -12,6 +17,20 @@ export interface SendVerificationEmailParams {
   name: string;
   rawToken: string;
   expiryHours: number;
+}
+
+export interface SendPasswordResetEmailParams {
+  userId: string;
+  to: string;
+  name: string;
+  rawToken: string;
+  expiryMinutes: number;
+}
+
+export interface SendPasswordChangedEmailParams {
+  userId: string;
+  to: string;
+  name: string;
 }
 
 export class EmailDeliveryError extends Error {
@@ -74,14 +93,112 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const verificationUrl = this.buildTokenUrl(
+      'EMAIL_VERIFICATION_URL_BASE',
+      'http://localhost:3000/verify-email',
+      params.rawToken,
+    );
+    const template = renderVerificationEmailTemplate({
+      name: params.name,
+      verificationUrl,
+      expiryHours: params.expiryHours,
+    });
+
+    await this.deliverSmtpTemplate({
+      userId: params.userId,
+      to: params.to,
+      template,
+      successLog: `Verification email dispatched via SMTP for user [${params.userId}]`,
+      errorLogContext: 'verification email',
+      failureMessage: 'Failed to deliver verification email',
+    });
+  }
+
+  /**
+   * Dispatches a password-reset email containing a single-use reset link.
+   * Never logs raw reset tokens, reset URLs, email addresses, or SMTP credentials.
+   */
+  async sendPasswordResetEmail(params: SendPasswordResetEmailParams): Promise<void> {
+    const provider = this.getProvider();
+
+    if (provider === 'disabled') {
+      this.logger.debug(
+        `Email dispatch disabled; skipped password reset email for user [${params.userId}]`,
+      );
+      return;
+    }
+
+    if (provider === 'console') {
+      // Security: Never build reset URLs or log raw tokens in console mode.
+      this.logger.log(
+        `[MailService:console] Password reset email prepared for user [${params.userId}] (expires in ${params.expiryMinutes}m; token omitted from logs)`,
+      );
+      return;
+    }
+
+    const resetUrl = this.buildTokenUrl(
+      'PASSWORD_RESET_URL_BASE',
+      'http://localhost:3000/reset-password',
+      params.rawToken,
+    );
+    const template = renderPasswordResetEmailTemplate({
+      name: params.name,
+      resetUrl,
+      expiryMinutes: params.expiryMinutes,
+    });
+
+    await this.deliverSmtpTemplate({
+      userId: params.userId,
+      to: params.to,
+      template,
+      successLog: `Password reset email dispatched via SMTP for user [${params.userId}]`,
+      errorLogContext: 'password reset email',
+      failureMessage: 'Failed to deliver password reset email',
+    });
+  }
+
+  /**
+   * Dispatches a confirmation notification after a user password change or reset succeeds.
+   */
+  async sendPasswordChangedEmail(params: SendPasswordChangedEmailParams): Promise<void> {
+    const provider = this.getProvider();
+
+    if (provider === 'disabled') {
+      this.logger.debug(
+        `Email dispatch disabled; skipped password changed notification for user [${params.userId}]`,
+      );
+      return;
+    }
+
+    if (provider === 'console') {
+      this.logger.log(
+        `[MailService:console] Password changed notification prepared for user [${params.userId}]`,
+      );
+      return;
+    }
+
+    const template = renderPasswordChangedEmailTemplate({ name: params.name });
+
+    await this.deliverSmtpTemplate({
+      userId: params.userId,
+      to: params.to,
+      template,
+      successLog: `Password changed notification dispatched via SMTP for user [${params.userId}]`,
+      errorLogContext: 'password changed notification',
+      failureMessage: 'Failed to deliver password changed notification',
+    });
+  }
+
+  private async deliverSmtpTemplate(params: {
+    userId: string;
+    to: string;
+    template: RenderedEmailTemplate;
+    successLog: string;
+    errorLogContext: string;
+    failureMessage: string;
+  }): Promise<void> {
     try {
       const transporter = this.getOrCreateTransporter();
-      const verificationUrl = this.buildVerificationUrl(params.rawToken);
-      const template = renderVerificationEmailTemplate({
-        name: params.name,
-        verificationUrl,
-        expiryHours: params.expiryHours,
-      });
       const from = this.configService.get<string>(
         'EMAIL_FROM',
         'Halal Dine <noreply@halaldine.in>',
@@ -90,18 +207,18 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
       await transporter.sendMail({
         from,
         to: params.to,
-        subject: template.subject,
-        text: template.text,
-        html: template.html,
+        subject: params.template.subject,
+        text: params.template.text,
+        html: params.template.html,
       });
 
-      this.logger.log(`Verification email dispatched via SMTP for user [${params.userId}]`);
+      this.logger.log(params.successLog);
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.error(
-        `Failed to dispatch verification email for user [${params.userId}] (${errorName})`,
+        `Failed to dispatch ${params.errorLogContext} for user [${params.userId}] (${errorName})`,
       );
-      throw new EmailDeliveryError('Failed to deliver verification email');
+      throw new EmailDeliveryError(params.failureMessage);
     }
   }
 
@@ -125,11 +242,8 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
     return this.transporter;
   }
 
-  private buildVerificationUrl(rawToken: string): string {
-    const baseUrl = this.configService.get<string>(
-      'EMAIL_VERIFICATION_URL_BASE',
-      'http://localhost:3000/verify-email',
-    );
+  private buildTokenUrl(envKey: string, defaultBaseUrl: string, rawToken: string): string {
+    const baseUrl = this.configService.get<string>(envKey, defaultBaseUrl);
     const url = new URL(baseUrl);
     url.searchParams.set('token', rawToken);
     return url.toString();

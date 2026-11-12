@@ -76,6 +76,7 @@ model User {
 
   sessions                UserSession[]
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
   restaurantOwners        RestaurantOwner[]
   ownershipClaims   OwnershipClaim[]   @relation("ClaimantUser")
   reviewedClaims    OwnershipClaim[]   @relation("ReviewerUser")
@@ -97,19 +98,49 @@ model UserSession {
   deviceInfo       String?
   userAgent        String?
   ipAddress        String?
+  lastUsedAt       DateTime  @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rotatedTokens RotatedRefreshToken[]
 
   @@index([userId])
   @@index([expiresAt])
   @@index([userId, revokedAt])
 }
 
+model RotatedRefreshToken {
+  id        String   @id @default(uuid())
+  sessionId String
+  tokenHash String   @unique
+  rotatedAt DateTime @default(now())
+  expiresAt DateTime
+
+  session UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([expiresAt])
+}
+
 model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([userId, usedAt])
+}
+
+model PasswordResetToken {
   id        String    @id @default(uuid())
   userId    String
   tokenHash String    @unique
